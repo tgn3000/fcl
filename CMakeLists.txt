@@ -139,25 +139,32 @@ endif()
 add_subdirectory(include/fcl)
 add_subdirectory(src)
 
-set(pkg_conf_file_in "${CMAKE_CURRENT_SOURCE_DIR}/fcl.pc.in")
-set(pkg_conf_file_out "${CMAKE_CURRENT_BINARY_DIR}/fcl.pc")
+# set(pkg_conf_file_in "${CMAKE_CURRENT_SOURCE_DIR}/fcl.pc.in")
+# set(pkg_conf_file_out "${CMAKE_CURRENT_BINARY_DIR}/fcl.pc")
 if(NOT MSVC)
     set(PKG_CFLAGS "-std=c++11")
 endif()
-configure_file("${pkg_conf_file_in}" "${pkg_conf_file_out}" @ONLY)
+# configure_file("${pkg_conf_file_in}" "${pkg_conf_file_out}" @ONLY)
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h" PATTERN "*.hxx"
   PATTERN ".DS_Store" EXCLUDE
 )
 
-install(FILES "${pkg_conf_file_out}" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig/ COMPONENT pkgconfig)
+# install(FILES "${pkg_conf_file_out}" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig/ COMPONENT pkgconfig)
 
 # Add uninstall target
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/cmake_uninstall.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/CMakeModules/cmake_uninstall.cmake"
-  IMMEDIATE @ONLY)
-add_custom_target(uninstall
-  "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/CMakeModules/cmake_uninstall.cmake")
+# configure_file(
+#   "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/cmake_uninstall.cmake.in"
+#   "${CMAKE_CURRENT_BINARY_DIR}/CMakeModules/cmake_uninstall.cmake"
+#   IMMEDIATE @ONLY)
+# add_custom_target(uninstall
+#   "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/CMakeModules/cmake_uninstall.cmake")
+
+configure_file(cmake/FCLConfig.cmake.in FCLConfig.cmake @ONLY)
+configure_file(cmake/FCLConfigVersion.cmake.in FCLConfigVersion.cmake @ONLY)
+
+# install fcl's cmake files
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/FCLConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/FCLConfigVersion.cmake
+        DESTINATION lib/cmake/fcl)
 
