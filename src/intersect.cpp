@@ -173,8 +173,8 @@ int PolySolver::solveCubic(FCL_REAL c[4], FCL_REAL s[3])
 
 
 
-const FCL_REAL Intersect::EPSILON = 1e-5;
-const FCL_REAL Intersect::NEAR_ZERO_THRESHOLD = 1e-7;
+const FCL_REAL Intersect::EPSILON = 1e-16; // 1e-5 is too small and cannot get correct contact points.
+const FCL_REAL Intersect::NEAR_ZERO_THRESHOLD = 1e-16;
 const FCL_REAL Intersect::CCD_RESOLUTION = 1e-7;
 
 
@@ -813,20 +813,20 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
                                    FCL_REAL* penetration_depth,
                                    Vec3f* normal)
 {
-  Vec3f p1 = P1 - P1;
+  Vec3f p1(0,0,0);// = P1 - P1;
   Vec3f p2 = P2 - P1;
   Vec3f p3 = P3 - P1;
   Vec3f q1 = Q1 - P1;
   Vec3f q2 = Q2 - P1;
   Vec3f q3 = Q3 - P1;
 
-  Vec3f e1 = p2 - p1;
-  Vec3f e2 = p3 - p2;
+  Vec3f e1 = p2;// - p1;
+  Vec3f e2 = P3 - P2;//p3 - p2;
   Vec3f n1 = e1.cross(e2);
   if (!project6(n1, p1, p2, p3, q1, q2, q3)) return false;
 
-  Vec3f f1 = q2 - q1;
-  Vec3f f2 = q3 - q2;
+  Vec3f f1 = Q2 - Q1;
+  Vec3f f2 = Q3 - Q2;
   Vec3f m1 = f1.cross(f2);
   if (!project6(m1, p1, p2, p3, q1, q2, q3)) return false;
 
@@ -836,7 +836,7 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
   Vec3f ef12 = e1.cross(f2);
   if (!project6(ef12, p1, p2, p3, q1, q2, q3)) return false;
 
-  Vec3f f3 = q1 - q3;
+  Vec3f f3 = Q1 - Q3;
   Vec3f ef13 = e1.cross(f3);
   if (!project6(ef13, p1, p2, p3, q1, q2, q3)) return false;
 
@@ -849,7 +849,7 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
   Vec3f ef23 = e2.cross(f3);
   if (!project6(ef23, p1, p2, p3, q1, q2, q3)) return false;
 
-  Vec3f e3 = p1 - p3;
+  Vec3f e3 = P1 - P3;
   Vec3f ef31 = e3.cross(f1);
   if (!project6(ef31, p1, p2, p3, q1, q2, q3)) return false;
 
@@ -879,10 +879,10 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
 
   if(contact_points && num_contact_points && penetration_depth && normal)
   {
-    Vec3f n1, n2;
-    FCL_REAL t1, t2;
-    buildTrianglePlane(P1, P2, P3, &n1, &t1);
-    buildTrianglePlane(Q1, Q2, Q3, &n2, &t2);
+    Vec3f n1(0,0,0), n2(0,0,0);
+    FCL_REAL t1=0, t2=0;
+    bool isPValidTri = buildTrianglePlane(P1, P2, P3, &n1, &t1);
+    bool isQValidTri = buildTrianglePlane(Q1, Q2, Q3, &n2, &t2);
 
     Vec3f deepest_points1[3];
     unsigned int num_deepest_points1 = 0;
@@ -896,28 +896,157 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
     computeDeepestPoints(Q, 3, n1, t1, &penetration_depth2, deepest_points2, &num_deepest_points2);
     computeDeepestPoints(P, 3, n2, t2, &penetration_depth1, deepest_points1, &num_deepest_points1);
 
+    // have to return contact points on the surface
+    FCL_REAL distQ1 = distanceToPlane(n1, t1, Q1);
+    FCL_REAL distQ2 = distanceToPlane(n1, t1, Q2);
+    FCL_REAL distQ3 = distanceToPlane(n1, t1, Q3);
+    int nLocalNumPoints = 0;
+    if( isPValidTri && (distQ1 > 0) != (distQ2 > 0) ) {
+        Vec3f tmp = Q2 - Q1;
+        FCL_REAL dist2 = tmp.dot(n1);
+        if( std::abs(dist2) <= EPSILON ) {
+            contact_points[nLocalNumPoints] = Q1;
+        }
+        else {
+            contact_points[nLocalNumPoints] = tmp * (-distQ1 / dist2) + Q1;
+        }
+        nLocalNumPoints += 1;
+    }
+    if( isPValidTri && (distQ2 > 0) != (distQ3 > 0) ) {
+        Vec3f tmp = Q3 - Q2;
+        FCL_REAL dist2 = tmp.dot(n1);
+        if( std::abs(dist2) <= EPSILON ) {
+            contact_points[nLocalNumPoints] = Q2;
+        }
+        else {
+            contact_points[nLocalNumPoints] = tmp * (-distQ2 / dist2) + Q2;
+        }
+        nLocalNumPoints += 1;
+    }
+    if( isPValidTri && (distQ3 > 0) != (distQ1 > 0) ) {
+        Vec3f tmp = Q3 - Q1;
+        FCL_REAL dist2 = tmp.dot(n1);
+        if( std::abs(dist2) <= EPSILON ) {
+            contact_points[nLocalNumPoints] = Q1;
+        }
+        else {
+            contact_points[nLocalNumPoints] = tmp * (-distQ1 / dist2) + Q1;
+        }
+        nLocalNumPoints += 1;
+    }
+
+    int numInside = 0;
+    for(int icontact = 0; icontact < nLocalNumPoints; ++icontact) {
+        if( insideTriangle(P1, P2, P3, contact_points[icontact]) ) {
+            if( icontact != 0 ) {
+                std::swap(contact_points[0], contact_points[icontact]);
+            }
+            numInside = 1;
+            break;
+        }
+    }
+
+    if( nLocalNumPoints == 1 && numInside == 0 ) {
+        // some degenerate case, do not accept the contact point...
+        nLocalNumPoints = 0;
+    }
+    else if( nLocalNumPoints > 1 ) {
+        // assume contact_points[0] is inside the P triangle
+        int inextwrite = numInside;
+        for(int icontact = numInside; icontact < nLocalNumPoints; ++icontact) {
+            Vec3f pc1 = P1 - contact_points[icontact];
+            Vec3f pc2 = P2 - contact_points[icontact];
+            Vec3f pc3 = P3 - contact_points[icontact];
+            int nOtherIndex = icontact ? 0 : 1;
+            Vec3f interOnP, interOnLine;
+            FCL_REAL mua, mub;
+            bool bClipped = false;
+            if(!bClipped && (pc2.cross(pc3)).dot(n1) < 0) {
+                if( linelineIntersect(P2, P3, contact_points[nOtherIndex], contact_points[icontact], &interOnP, &interOnLine, &mua, &mub) ) {
+
+                    
+                    // point outside of P2/P3
+                    contact_points[icontact] = interOnLine;
+                    bClipped = true;
+                }
+            }
+            if(!bClipped && (pc3.cross(pc1)).dot(n1) < 0) {
+                if( linelineIntersect(P3, P1, contact_points[nOtherIndex], contact_points[icontact], &interOnP, &interOnLine, &mua, &mub) ) {
+                    // point outside of P3/P1
+                    contact_points[icontact] = interOnLine;
+                    bClipped = true;
+                }
+            }
+            if(!bClipped && (pc1.cross(pc2)).dot(n1) < 0) {
+                if( linelineIntersect(P1, P2, contact_points[nOtherIndex], contact_points[icontact], &interOnP, &interOnLine, &mua, &mub) ) {
+                    // point outside of P1/P2
+                    contact_points[icontact] = interOnLine;
+                    bClipped = true;
+                }
+            }
+
+            if( insideTriangle(P1, P2, P3, contact_points[icontact]) ) {
+                if( inextwrite != icontact ) {
+                    contact_points[inextwrite] = contact_points[icontact];
+                }
+                inextwrite++;
+            }
+        }
+        nLocalNumPoints = inextwrite;
+    }
+    *num_contact_points = nLocalNumPoints;
 
     if(penetration_depth1 > penetration_depth2)
     {
-      *num_contact_points = std::min(num_deepest_points2, (unsigned int)2);
-      for(unsigned int i = 0; i < *num_contact_points; ++i)
-      {
-        contact_points[i] = deepest_points2[i];
-      }
+//      nLocalNumPoints = std::min(num_deepest_points2, (unsigned int)2);
+//      for(unsigned int i = 0; i < nLocalNumPoints; ++i)
+//      {
+//          contact_points[i] = deepest_points2[i];
+//      }
 
       *normal = n1;
       *penetration_depth = penetration_depth2;
+//      printf("{\"P\":[[%.16e, %.16e, %.16e], [%.16e, %.16e, %.16e], [%.16e, %.16e, %.16e]], \
+//               \"Q\":[[%.16e, %.16e, %.16e], [%.16e, %.16e, %.16e], [%.16e, %.16e, %.16e]]",
+//             P[0][0], P[0][1], P[0][2], P[1][0], P[1][1], P[1][2], P[2][0], P[2][1], P[2][2],
+//             Q[0][0], Q[0][1], Q[0][2], Q[1][0], Q[1][1], Q[1][2], Q[2][0], Q[2][1], Q[2][2]
+//             );
+//      printf(", \"distQ\":[%.16e, %.16e, %.16e]", distQ1, distQ2, distQ3);
+//      printf(", \"n1\":[%.16e, %.16e, %.16e], \"t1\":%.16e", n1[0], n1[1], n1[2], t1);
+//      printf(", \"contact_points\":[");
+//      for(int i = 0; i < nLocalNumPoints; ++i) {
+//          if( i != 0 ) {
+//              printf(",");
+//          }
+//          printf("[%.16e, %.16e, %.16e]", contact_points[i][0], contact_points[i][1], contact_points[i][2]);
+//      }
+//      printf("], \"deepest_points1\":[");
+//      for(int i = 0; i < num_deepest_points1; ++i) {
+//          if( i != 0 ) {
+//              printf(",");
+//          }
+//          printf("[%.16e, %.16e, %.16e]", deepest_points1[i][0], deepest_points1[i][1], deepest_points1[i][2]);
+//      }
+//      printf("], \"deepest_points2\":[");
+//      for(int i = 0; i < num_deepest_points2; ++i) {
+//          if( i != 0 ) {
+//              printf(",");
+//          }
+//          printf("[%.16e, %.16e, %.16e]", deepest_points2[i][0], deepest_points2[i][1], deepest_points2[i][2]);
+//      }
+//      printf("]},\n");
     }
     else
     {
-      *num_contact_points = std::min(num_deepest_points1, (unsigned int)2);
-      for(unsigned int i = 0; i < *num_contact_points; ++i)
-      {
-        contact_points[i] = deepest_points1[i];
-      }
+//      nLocalNumPoints = std::min(num_deepest_points1, (unsigned int)2);
+//      for(unsigned int i = 0; i < nLocalNumPoints; ++i)
+//      {
+//        contact_points[i] = deepest_points1[i];
+//      }
 
       *normal = -n2;
       *penetration_depth = penetration_depth1;
+      //printf("-1,\n");//G2 penetration_depth1=%f, penetration_depth2=%f, deepest_points1\n", penetration_depth1, penetration_depth2);
     }
   }
 
@@ -1110,10 +1239,10 @@ FCL_REAL Intersect::distanceToPlane(const Vec3f& n, FCL_REAL t, const Vec3f& v)
 bool Intersect::buildTrianglePlane(const Vec3f& v1, const Vec3f& v2, const Vec3f& v3, Vec3f* n, FCL_REAL* t)
 {
   Vec3f n_ = (v2 - v1).cross(v3 - v1);
-  bool can_normalize = false;
-  n_.normalize(&can_normalize);
-  if(can_normalize)
+  FCL_REAL sqr_length = n_.dot(n_); // cannot use n_.normalize since it checks for 0 and not EPSILON, and normals get badly conditioned.
+  if( sqr_length > EPSILON*EPSILON )
   {
+    n_ /= (FCL_REAL)sqrt(sqr_length);
     *n = n_;
     *t = n_.dot(v1);
     return true;
@@ -1125,10 +1254,10 @@ bool Intersect::buildTrianglePlane(const Vec3f& v1, const Vec3f& v2, const Vec3f
 bool Intersect::buildEdgePlane(const Vec3f& v1, const Vec3f& v2, const Vec3f& tn, Vec3f* n, FCL_REAL* t)
 {
   Vec3f n_ = (v2 - v1).cross(tn);
-  bool can_normalize = false;
-  n_.normalize(&can_normalize);
-  if(can_normalize)
+  FCL_REAL sqr_length = n_.dot(n_); // cannot use n_.normalize since it checks for 0 and not EPSILON, and normals get badly conditioned.
+  if( sqr_length > EPSILON*EPSILON )
   {
+    n_ /= (FCL_REAL)sqrt(sqr_length);
     *n = n_;
     *t = n_.dot(v1);
     return true;
