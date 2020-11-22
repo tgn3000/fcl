@@ -116,26 +116,9 @@ endif()
 include_directories(BEFORE "include")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/include")
 
-if(PKG_CONFIG_FOUND)
-  pkg_check_modules(CCD ccd)
-  # check to see if the pkg is installed under the libccd name
-  if(NOT CCD_FOUND)
-    pkg_check_modules(CCD libccd)
-  endif()
-endif()
-
-if(NOT CCD_FOUND)
-    # if pkgconfig is not installed, then fall back on more fragile detection
-    # of ccd
-    find_path(CCD_INCLUDE_DIRS ccd/ccd.h)
-    find_library(CCD_LIBRARY
-        ${CMAKE_SHARED_LIBRARY_PREFIX}ccd${CMAKE_SHARED_LIBRARY_SUFFIX})
-    if(CCD_INCLUDE_DIRS AND CCD_LIBRARY)
-        set(CCD_LIBRARIES "${CCD_LIBRARY}")
-    else()
-        message(FATAL_ERROR "Libccd is required by FCL")
-    endif()
-endif()
+find_package(ccd REQUIRED)
+message(STATUS "CCD_INCLUDE_DIRS = ${CCD_INCLUDE_DIRS}")
+message(STATUS "CCD_LIBRARIES    = ${CCD_LIBRARIES}")
 include_directories(${CCD_INCLUDE_DIRS})
 link_directories(${CCD_LIBRARY_DIRS})
 
